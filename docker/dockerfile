@@ -1,50 +1,21 @@
-# Download base image ubuntu latest
-FROM ubuntu:latest
+FROM continuumio/miniconda3
 
-# LABEL about the custom image
-LABEL maintainer="NNPDF"
-LABEL description="Image with NNPDF tagged code."
-
-ENV CONDA_URL https://repo.continuum.io/miniconda/Miniconda3-latest-Linux-x86_64.sh
-ENV CONDA_FILE Miniconda3-latest-Linux-x86_64.sh
-
-# Disable Prompt During Packages Installation
-ARG DEBIAN_FRONTEND=noninteractive
-
-# Get conda environemnt name
-ARG CONDA_ENV_NAME
-ENV CONDA_ENV_NAME=$CONDA_ENV_NAME
-
-# Update Ubuntu Software repository
-RUN apt update
-
-# Install wget
-RUN apt install -y wget
-
-# Install conda
-RUN wget "$CONDA_URL"      && \
-    chmod +x "$CONDA_FILE" && \
-    ./"$CONDA_FILE" -b     && \
-    rm "$CONDA_FILE"
-
-ENV PATH /root/miniconda3/bin:$PATH
-
-# Setup conda channels
+RUN apt update && apt upgrade -y
+RUN apt install -y build-essential
+RUN conda create -n simunet
+# Make RUN commands use the new environment:
+SHELL ["conda", "run", "-n", "simunet", "/bin/bash", "-c"]    
 RUN conda config --append channels conda-forge                                    && \
-    conda config --prepend channels https://packages.nnpdf.science/public/        && \
-    conda config --set show_channel_urls true                                     && \
-    conda init bash
-
-# Copy conda package to image
-COPY conda-bld /root/conda-bld
-
-# install the nnpdf framework
-RUN conda create -n $CONDA_ENV_NAME -c file:///root/conda-bld/linux-64 nnpdf && \
-    echo "conda activate $CONDA_ENV_NAME" >> /root/.bashrc                   && \
-    conda env export --name $CONDA_ENV_NAME > /root/$CONDA_ENV_NAME.yml
-
-# delete package
-RUN rm -r /root/conda-bld
-
-# run bash as entrypoint
-ENTRYPOINT bash
+    conda config --prepend channels https://packages.nnpdf.science/public/         
+RUN conda install --only-deps nnpdf=4.0.5
+RUN conda install gxx_linux-64
+RUN conda install pkg-config swig cmake rhash
+RUN conda install sysroot_linux-64=2.17
+WORKDIR /simunet_git
+COPY . .
+WORKDIR /simunet_git/SIMUnet/conda-bld
+RUN cmake .. -DCMAKE_INSTALL_PREFIX=$CONDA_PREFIX
+RUN make
+RUN make install
+WORKDIR /simunet_git/SIMUnet/n3fit/runcards/examples
+RUN vp-setupfit Basic_runcard.yml
